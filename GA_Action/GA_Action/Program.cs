@@ -84,6 +84,7 @@ namespace GA_Action
         private int screenWidth;
         private bool end;
         private int score;
+        private int turn;
 
         public bool End { get => end; }
         public int Score { get => score; }
@@ -95,10 +96,13 @@ namespace GA_Action
             pos = new Pos(0, 0);
             end = false;
             score = 0;
+            turn = 0;
         }
 
         public void Update(Action nextAction)
         {
+            turn++;
+
             // 動く
             switch (nextAction)
             {
@@ -116,7 +120,7 @@ namespace GA_Action
                     if (field.Get(pos.X, pos.Y + 1) == Tile.WALL)
                     {
                         // 最大3マスジャンプ
-                        for (int i = 1; i <= 3; i++)
+                        for (int i = 0; i <= 3 ; i++)
                         {
                             if (pos.Y - 1 < 0) { break; } // 画面から出ない
                             if (field.Get(pos.X, pos.Y - 1) != Tile.WALL &&
@@ -136,16 +140,16 @@ namespace GA_Action
                 pos.Y++;
             }
 
+            score = pos.X; // 到達した座標がスコア
             // ゴール
             if (field.Get(pos.X, pos.Y) == Tile.GOAL)
             {
-                score = pos.X + 1000; // ボーナスで+1000
+                score = pos.X + 1000 - turn; // ボーナスで+1000
                 end = true;
             }
             // 死んだ
             else if (field.Get(pos.X, pos.Y) == Tile.DEATH)
             {
-                score = pos.X; // 到達した座標がスコア
                 end = true;
             }
         }
@@ -200,31 +204,188 @@ namespace GA_Action
         }
     }
 
+    class Genom
+    {
+        private List<Action> actions;
+        private int p;
+        private int score;
+        public Genom(List<Action> actions)
+        {
+            this.actions = actions;
+            p = 0;
+            score = 0;
+        }
+
+        // ランダムな遺伝子列を作る。
+        public static Genom Init(uint length, Random random)
+        {
+            List<Action> actions = new List<Action>();
+            for (int i = 0; i < length; i++)
+            {
+                // enumの変更に強くないのでだめ
+                actions.Add((Action)random.Next(3));
+            }
+            return new Genom(actions);
+        }
+        public Action Next()
+        {
+            Action nextAction = actions.ElementAt(p);
+            p++;
+            return nextAction;
+        }
+        public bool End { get => p >= actions.Count; }
+        public int Length { get => actions.Count; }
+        public int Score { get => score; set => score = value; }
+        internal List<Action> Actions { get => actions; }
+    }
+
 
     class Program
     {
+        static List<Genom> NextGeneration(List<Genom> parents)
+        {
+            List<Genom> children = new List<Genom>();
+            Random random = new Random();
+            const double e = 0.2;
+
+            while (children.Count < parents.Count)
+            {
+                // 今回の親子
+                Genom p1, p2;
+
+                // これはランダム
+                if (e >= random.NextDouble())
+                {
+                    parents = parents.OrderBy((x) => new Guid()).ToList();
+                }
+                // こっちがエリート
+                else
+                {
+                    parents.Sort((a, b) => a.Score.CompareTo(b.Score));
+                }
+
+                // 親が選択された
+                p1 = parents.ElementAt(parents.Count - 1);
+                p2 = parents.ElementAt(parents.Count - 2);
+
+                // 一様交差
+                Action[] cgenom1 = new Action[p1.Length];
+                Action[] cgenom2 = new Action[p1.Length];
+                for (int i = 0; i < p1.Length; i++)
+                {
+                    if (random.Next(2) == 0)
+                    {
+                        cgenom1[i] = (p1.Actions.ElementAt(i));
+                        cgenom2[i] = (p2.Actions.ElementAt(i));
+                    }
+                    else
+                    {
+                        cgenom2[i] = (p1.Actions.ElementAt(i));
+                        cgenom1[i] = (p2.Actions.ElementAt(i));
+                    }
+                }
+
+                //// 一点交差
+                //int p = random.Next(p1.Length);
+
+                //Action[] cgenom1 = p1.Actions.GetRange(0, p).Concat(p2.Actions.GetRange(p, p1.Length - p)).ToArray();
+                //Action[] cgenom2 = p2.Actions.GetRange(0, p).Concat(p1.Actions.GetRange(p, p2.Length - p)).ToArray();
+
+                // 突然変異
+                for (int i = 0; i < cgenom1.Length; i++)
+                {
+                    if (random.NextDouble() <= 0.005)
+                    {
+                        cgenom1[i] = (Action)random.Next(3);
+                    }
+                }
+                for (int i = 0; i < cgenom1.Length; i++)
+                {
+                    if (random.NextDouble() <= 0.005)
+                    {
+                        cgenom2[i] = (Action)random.Next(3);
+                    }
+                }
+
+
+                children.Add(new Genom(cgenom1.ToList()));
+                children.Add(new Genom(cgenom2.ToList()));
+            }
+
+            return children;
+        }
+        static void GeneticAlgorithm(Field field, int screenWidth, int seed, uint genomLength = 1000, uint groupSize = 10)
+        {
+            // ほげる
+            if (groupSize%2 != 0)
+            {
+                throw new Exception("AAN");
+            }
+            Genom maxGenom = null;
+            int maxScore = -1;
+
+            // 初期化
+            Random random = new Random(seed);
+            List<Genom> genoms = new List<Genom>();
+            for (int i = 0; i < groupSize; i++)
+            {
+                genoms.Add(Genom.Init(genomLength, random));
+            }
+
+            for (int c = 0; c < 3000; c++)
+            {
+
+                // 評価
+                for (int i = 0; i < groupSize; i++)
+                {
+                    Genom genom = genoms.ElementAt(i);
+                    Simulator simulator = new Simulator(field, screenWidth);
+                    while (!simulator.End && !genom.End)
+                    {
+                        //simulator.Draw();
+                        //System.Threading.Thread.Sleep(20);
+                        Action nextAction = genom.Next();
+                        simulator.Update(nextAction);
+                    }
+                    genom.Score = simulator.Score;
+                    //Console.Clear();
+                    //Console.SetCursorPosition(0, 20);
+                    //Console.WriteLine("GENERATION:{0}", c);
+                    //Console.WriteLine("SCORE:{0}", genom.Score);
+
+
+                    if (maxScore < genom.Score)
+                    {
+                        maxScore = genom.Score;
+                        maxGenom = new Genom(genom.Actions);
+                    }
+                }
+
+                // 次世代
+                genoms = NextGeneration(genoms);
+            }
+            {
+                Genom genom = maxGenom;
+                Simulator simulator = new Simulator(field, screenWidth);
+                while (!simulator.End && !genom.End)
+                {
+                    simulator.Draw();
+                    System.Threading.Thread.Sleep(20);
+                    Action nextAction = genom.Next();
+                    simulator.Update(nextAction);
+                }
+                genom.Score = simulator.Score;
+                //Console.Clear();
+                //Console.SetCursorPosition(0, 20);
+                //Console.WriteLine("GENERATION:{0}", c);
+                Console.WriteLine("SCORE:{0}", genom.Score);
+            }
+            Console.WriteLine("MAX SCORE:{0}", maxScore);
+        }
         static void Main(string[] args)
         {
             Field field = new Field("field1.txt");
-            Simulator simulator = new Simulator(field, 20);
-
-            while (!simulator.End)
-            {
-                simulator.Draw();
-
-                Action nextAction = Action.STAY;
-                var c = Console.ReadKey();
-                switch (c.KeyChar)
-                {
-                    case 'g': nextAction = Action.GO; break;
-                    case 'j': nextAction = Action.JUMP; break;
-                    default: break;
-                }
-                simulator.Update(nextAction);
-
-            }
-
-            Console.WriteLine("Your Score is ===> {0}", simulator.Score);
+            GeneticAlgorithm(field, 20, (int)System.DateTime.UtcNow.Ticks, 200, 20);
 
         }
     }
