@@ -40,6 +40,7 @@ namespace GA_Action
         private List<string> lines;
         private readonly int width;
         private readonly int height;
+        private List<int>[,] jumpto;
 
         public Field(string path)
         {
@@ -64,11 +65,44 @@ namespace GA_Action
             lines.Add(new string(Tile.DEATH, width) + Tile.GOAL);
             // 高さを設定
             height = lines.Count;
+
+            // code by dun
+            jumpto = new List<int>[width, height];
+            for(int y = 0; y < height; y++)
+            {
+                for(int x = 0; x < width; x++)
+                {
+                    char c = this.Get(x, y);
+                    if ('0' <= c && c <= '9')
+                    {
+                        for (int yy = 0; yy < height; yy++)
+                        {
+                            for (int xx = 0; xx < width; xx++)
+                            {
+                                if (xx == x && yy == y) continue;
+                                char cc = this.Get(xx, yy);
+                                if (cc == c)
+                                {
+                                    jumpto[x, y] = new List<int>();
+                                    jumpto[x, y].Add(xx);
+                                    jumpto[x, y].Add(yy);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         public char Get(int x, int y)
         {
             return lines.ElementAt(y).ElementAt(x);
+        }
+
+        // code by dun
+        public Pos GetWarpTo(Pos pos)
+        {
+            return new Pos(jumpto[pos.X, pos.Y][0], jumpto[pos.X, pos.Y][1]);
         }
 
         // この辺りよくわからずに使ってるけど不要でしょって思うよ
@@ -141,6 +175,12 @@ namespace GA_Action
             }
 
             score = pos.X; // 到達した座標がスコア
+            // code by dun
+            if ('0' <= field.Get(pos.X, pos.Y) && field.Get(pos.X, pos.Y) <= '9')
+            {
+                pos = field.GetWarpTo(pos);
+            }
+
             // ゴール
             if (field.Get(pos.X, pos.Y) == Tile.GOAL)
             {
@@ -343,7 +383,7 @@ namespace GA_Action
                     while (!simulator.End && !genom.End)
                     {
                         //simulator.Draw();
-                        //System.Threading.Thread.Sleep(20);
+                        //System.Threading.Thread.Sleep(100);
                         Action nextAction = genom.Next();
                         simulator.Update(nextAction);
                     }
@@ -384,9 +424,8 @@ namespace GA_Action
         }
         static void Main(string[] args)
         {
-            Field field = new Field("field1.txt");
-            GeneticAlgorithm(field, 20, (int)System.DateTime.UtcNow.Ticks, 200, 20);
-
+            Field field = new Field("field12.txt");
+            GeneticAlgorithm(field, 20, 5467890, 1000, 20);
         }
     }
 }
