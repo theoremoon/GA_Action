@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace GA_Action
 {
@@ -27,6 +30,20 @@ namespace GA_Action
             WALL = '#',
             DEATH = 'v',
             PLAYER = '&';
+        public static Image SPACE_IMAGE;
+        public static Image GOAL_IMAGE;
+        public static Image WALL_IMAGE;
+        public static Image DEATH_IMAGE;
+        public static Image PLAYER_IMAGE;
+
+        public static void Load()
+        {
+            SPACE_IMAGE = Image.FromFile("space.png");
+            GOAL_IMAGE = Image.FromFile("goal.png");
+            WALL_IMAGE = Image.FromFile("wall.png");
+            DEATH_IMAGE = Image.FromFile("death.png");
+            PLAYER_IMAGE = Image.FromFile("player.png");
+        }
     }
 
     enum Action
@@ -68,9 +85,9 @@ namespace GA_Action
 
             // code by dun
             jumpto = new List<int>[width, height];
-            for(int y = 0; y < height; y++)
+            for (int y = 0; y < height; y++)
             {
-                for(int x = 0; x < width; x++)
+                for (int x = 0; x < width; x++)
                 {
                     char c = this.Get(x, y);
                     if ('0' <= c && c <= '9')
@@ -154,7 +171,7 @@ namespace GA_Action
                     if (field.Get(pos.X, pos.Y + 1) == Tile.WALL)
                     {
                         // 最大3マスジャンプ
-                        for (int i = 0; i <= 3 ; i++)
+                        for (int i = 0; i <= 3; i++)
                         {
                             if (pos.Y - 1 < 0) { break; } // 画面から出ない
                             if (field.Get(pos.X, pos.Y - 1) != Tile.WALL &&
@@ -194,53 +211,65 @@ namespace GA_Action
             }
         }
 
-        // コンソールに現状を描画
-        public void Draw()
+        // 現在の画面を返す
+        public List<List<char>> GetScreen()
         {
+            List<List<char>> screen = new List<List<char>>();
+
             // 最初
             if (pos.X <= screenWidth / 2)
             {
                 for (int y = 0; y < field.Height; y++)
                 {
-                    Console.SetCursorPosition(0, y);
+                    List<char> line = new List<char>();
                     for (int x = 0; x < screenWidth; x++)
                     {
-                        Console.Write(field.Get(x, y));
+                        line.Add(field.Get(x, y));
                     }
+                    screen.Add(line);
                 }
-                Console.SetCursorPosition(pos.X, pos.Y);
-                Console.Write(Tile.PLAYER);
+                screen[pos.Y][pos.X] = Tile.PLAYER;
             }
             // まんなか
             else if (pos.X < field.Width - screenWidth / 2)
             {
                 for (int y = 0; y < field.Height; y++)
                 {
-                    Console.SetCursorPosition(0, y);
+                    List<char> line = new List<char>();
                     for (int x = -screenWidth / 2; x < screenWidth / 2; x++)
                     {
-                        Console.Write(field.Get(pos.X + x, y));
+                        line.Add(field.Get(pos.X + x, y));
                     }
+                    screen.Add(line);
                 }
-                Console.SetCursorPosition(screenWidth / 2, pos.Y);
-                Console.Write(Tile.PLAYER);
+                screen[pos.Y][screenWidth / 2] = Tile.PLAYER;
             }
             // 最後
             else
             {
                 for (int y = 0; y < field.Height; y++)
                 {
-                    Console.SetCursorPosition(0, y);
+                    List<char> line = new List<char>();
                     for (int x = 0; x <= screenWidth; x++)
                     {
-                        Console.Write(field.Get(field.Width - screenWidth + x, y));
+                        line.Add(field.Get(field.Width - screenWidth + x, y));
                     }
+                    screen.Add(line);
                 }
-                Console.SetCursorPosition(pos.X - (field.Width - screenWidth), pos.Y);
-                Console.Write(Tile.PLAYER);
+                screen[pos.Y][pos.X - (field.Width - screenWidth)] = Tile.PLAYER;
             }
 
-            Console.SetCursorPosition(0, field.Height + 1);
+
+            return screen;
+        }
+
+        // コンソールに現状を描画
+        public void Draw()
+        {
+            List<List<char>> screen = GetScreen();
+
+            Console.SetCursorPosition(0, 0);
+            screen.ForEach(line => Console.WriteLine(line.ToArray()));
         }
     }
 
@@ -272,6 +301,10 @@ namespace GA_Action
             Action nextAction = actions.ElementAt(p);
             p++;
             return nextAction;
+        }
+        public void Reset()
+        {
+            p = 0;
         }
         public bool End { get => p >= actions.Count; }
         public int Length { get => actions.Count; }
@@ -357,10 +390,20 @@ namespace GA_Action
         static void GeneticAlgorithm(Field field, int screenWidth, int seed, uint genomLength = 1000, uint groupSize = 10)
         {
             // ほげる
-            if (groupSize%2 != 0)
+            if (groupSize % 2 != 0)
             {
                 throw new Exception("AAN");
             }
+
+            Viewer viewer = new Viewer();
+            List<GameScreen> gameScreens = new List<GameScreen>();
+            for (int i = 0; i < groupSize; i++)
+            {
+                GameScreen gameScreen = new GameScreen(screenWidth, field.Height);
+                gameScreens.Add(gameScreen);
+                viewer.AddScreen(gameScreen);
+            }
+
             Genom maxGenom = null;
             int maxScore = -1;
 
@@ -372,22 +415,23 @@ namespace GA_Action
                 genoms.Add(Genom.Init(genomLength, random));
             }
 
+            viewer.Show();
+
             for (int c = 0; c < 3000; c++)
             {
-
                 // 評価
                 for (int i = 0; i < groupSize; i++)
                 {
-                    Genom genom = genoms.ElementAt(i);
+                    Genom genom = genoms.ElementAt((int)i);
                     Simulator simulator = new Simulator(field, screenWidth);
                     while (!simulator.End && !genom.End)
                     {
                         //simulator.Draw();
-                        //System.Threading.Thread.Sleep(100);
+                        //System.Threading.Thread.Sleep(10);
                         Action nextAction = genom.Next();
                         simulator.Update(nextAction);
+                        genom.Score = simulator.Score;
                     }
-                    genom.Score = simulator.Score;
                     //Console.Clear();
                     //Console.SetCursorPosition(0, 20);
                     //Console.WriteLine("GENERATION:{0}", c);
@@ -398,6 +442,34 @@ namespace GA_Action
                     {
                         maxScore = genom.Score;
                         maxGenom = new Genom(genom.Actions);
+                    }
+                }
+
+                // 描画
+                List<Simulator> simulators = new List<Simulator>();
+                for (int i = 0; i < groupSize; i++)
+                {
+                    genoms[i].Reset();
+                    simulators.Add(new Simulator(field, screenWidth));
+                }
+                while (true)
+                {
+                    bool endAll = true;
+                    for (int i = 0; i < groupSize; i++)
+                    {
+                        if (!simulators[i].End)
+                        {
+                            endAll = false;
+                            Action nextAction = genoms[i].Next();
+                            simulators[i].Update(nextAction);
+                        }
+                        gameScreens[i].Update(simulators[i].GetScreen());
+                    }
+                    viewer.Refresh();
+                    System.Threading.Thread.Sleep(100);
+                    if (endAll)
+                    {
+                        break;
                     }
                 }
 
@@ -424,8 +496,103 @@ namespace GA_Action
         }
         static void Main(string[] args)
         {
-            Field field = new Field("field12.txt");
+            Tile.Load();
+
+            
+            Field field = new Field("field1.txt");
             GeneticAlgorithm(field, 20, 5467890, 1000, 20);
+        }
+
+    }
+
+
+
+    class GameScreen : Panel
+    {
+        private const int tileSize = 16;
+        private List<List<char>> screen;
+
+        public GameScreen(int width, int height)
+        {
+            this.Width = width * tileSize;
+            this.Height = height * tileSize;
+            this.Paint += new PaintEventHandler(OnDraw);
+            this.DoubleBuffered = true;
+        }
+        public void Update(List<List<char>> screen)
+        {
+            this.screen = screen;
+        }
+        private void OnDraw(object sender, PaintEventArgs e)
+        {
+            if (screen is null)
+            {
+                return;
+            }
+
+            Graphics g = e.Graphics;
+
+            for (int y = 0; y < screen.Count; y++)
+            {
+                for (int x = 0; x < screen[y].Count; x++)
+                {
+                    Image img = null;
+                    switch (screen[y][x])
+                    {
+                        case Tile.PLAYER:
+                            img = Tile.PLAYER_IMAGE;
+                            break;
+                        case Tile.SPACE:
+                            img = Tile.SPACE_IMAGE;
+                            break;
+                        case Tile.WALL:
+                            img = Tile.WALL_IMAGE;
+                            break;
+                        case Tile.GOAL:
+                            img = Tile.GOAL_IMAGE;
+                            break;
+                        case Tile.DEATH:
+                            img = Tile.DEATH_IMAGE;
+                            break;
+                    }
+                    g.DrawImage(img, new Point(x * tileSize, y * tileSize));
+                }
+            }
+        }
+
+    }
+    class Viewer : Form
+    {
+        private List<GameScreen> panels;
+        private int x;
+        private int y;
+
+        public Viewer()
+        {
+            this.x = 0;
+            this.y = 0;
+            this.Width = 1600;
+            this.Height = 768;
+            panels = new List<GameScreen>();
+        }
+        public void AddScreen(GameScreen gameScreen)
+        {
+            if (x + gameScreen.Width > this.Width)
+            {
+                x = 0;
+                y += gameScreen.Height + 10;
+            }
+            this.Controls.Add(gameScreen);
+            gameScreen.Location = new Point(x, y);
+
+            x += gameScreen.Width + 10;
+        }
+        public void UpdateScreen(int i, List<List<char>> screen)
+        {
+            if (i < panels.Count)
+            {
+                panels[i].Update(screen);
+            }
         }
     }
 }
