@@ -354,7 +354,7 @@ namespace GA_Action
 
             return children;
         }
-        static void GeneticAlgorithm(Field field, int screenWidth, int seed, uint genomLength = 1000, uint groupSize = 10)
+        static void GeneticAlgorithm(string outFileName, Field field, int screenWidth, Random random, uint genomLength = 1000, uint groupSize = 10)
         {
             // ほげる
             if (groupSize%2 != 0)
@@ -365,16 +365,16 @@ namespace GA_Action
             int maxScore = -1;
 
             // 初期化
-            Random random = new Random(seed);
             List<Genom> genoms = new List<Genom>();
             for (int i = 0; i < groupSize; i++)
             {
                 genoms.Add(Genom.Init(genomLength, random));
             }
 
+            List<double> scoreAvgs = new List<double>();
             for (int c = 0; c < 3000; c++)
             {
-
+                List<int> scores = new List<int>();
                 // 評価
                 for (int i = 0; i < groupSize; i++)
                 {
@@ -393,39 +393,34 @@ namespace GA_Action
                     //Console.WriteLine("GENERATION:{0}", c);
                     //Console.WriteLine("SCORE:{0}", genom.Score);
 
-
+                    scores.Add(genom.Score);
                     if (maxScore < genom.Score)
                     {
                         maxScore = genom.Score;
                         maxGenom = new Genom(genom.Actions);
                     }
                 }
-
+                scoreAvgs.Add(scores.Average());
                 // 次世代
                 genoms = NextGeneration(genoms);
             }
+            using (StreamWriter sw = new StreamWriter(outFileName))
             {
-                Genom genom = maxGenom;
-                Simulator simulator = new Simulator(field, screenWidth);
-                while (!simulator.End && !genom.End)
+                foreach (var scoreAvg in scoreAvgs)
                 {
-                    simulator.Draw();
-                    System.Threading.Thread.Sleep(20);
-                    Action nextAction = genom.Next();
-                    simulator.Update(nextAction);
+                    sw.WriteLine("{0}", scoreAvg);
                 }
-                genom.Score = simulator.Score;
-                //Console.Clear();
-                //Console.SetCursorPosition(0, 20);
-                //Console.WriteLine("GENERATION:{0}", c);
-                Console.WriteLine("SCORE:{0}", genom.Score);
+                sw.WriteLine("MAX SCORE, {0}", maxScore);
             }
-            Console.WriteLine("MAX SCORE:{0}", maxScore);
         }
         static void Main(string[] args)
         {
-            Field field = new Field("field12.txt");
-            GeneticAlgorithm(field, 20, 5467890, 1000, 20);
+            for (int i = 1; i <= 12; i++)
+            {
+                string fieldName = string.Format("field{0}.txt", i);
+                Field field = new Field(fieldName);
+                GeneticAlgorithm(string.Format("result{0}.csv", i), field, 20, new Random(), 1000, 20);
+            }
         }
     }
 }
