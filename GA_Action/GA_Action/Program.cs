@@ -119,9 +119,11 @@ namespace GA_Action
         private bool end;
         private int score;
         private int turn;
+        private bool isClear;
 
         public bool End { get => end; }
         public int Score { get => score; }
+        public bool IsClear { get => isClear; set => isClear = value; }
 
         public Simulator(Field field, int screenWidth)
         {
@@ -131,6 +133,7 @@ namespace GA_Action
             end = false;
             score = 0;
             turn = 0;
+            isClear = false;
         }
 
         public void Update(Action nextAction)
@@ -186,6 +189,7 @@ namespace GA_Action
             {
                 score = pos.X + 1000 - turn; // ボーナスで+1000
                 end = true;
+                isClear = true;
             }
             // 死んだ
             else if (field.Get(pos.X, pos.Y) == Tile.DEATH)
@@ -249,11 +253,13 @@ namespace GA_Action
         private List<Action> actions;
         private int p;
         private int score;
+        private bool isClear;
         public Genom(List<Action> actions)
         {
             this.actions = actions;
             p = 0;
             score = 0;
+            isClear = false;
         }
 
         // ランダムな遺伝子列を作る。
@@ -277,6 +283,7 @@ namespace GA_Action
         public int Length { get => actions.Count; }
         public int Score { get => score; set => score = value; }
         internal List<Action> Actions { get => actions; }
+        public bool IsClear { get => isClear; set => isClear = value; }
     }
 
 
@@ -339,7 +346,7 @@ namespace GA_Action
                         cgenom1[i] = (Action)random.Next(3);
                     }
                 }
-                for (int i = 0; i < cgenom1.Length; i++)
+                for (int i = 0; i < cgenom2.Length; i++)
                 {
                     if (random.NextDouble() <= 0.005)
                     {
@@ -361,9 +368,7 @@ namespace GA_Action
             {
                 throw new Exception("AAN");
             }
-            Genom maxGenom = null;
-            int maxScore = -1;
-
+            List<KeyValuePair<int, bool>> maxScores = new List<KeyValuePair<int, bool>>();
             // 初期化
             List<Genom> genoms = new List<Genom>();
             for (int i = 0; i < groupSize; i++)
@@ -387,6 +392,7 @@ namespace GA_Action
                         Action nextAction = genom.Next();
                         simulator.Update(nextAction);
                     }
+                    genom.IsClear = simulator.IsClear;
                     genom.Score = simulator.Score;
                     //Console.Clear();
                     //Console.SetCursorPosition(0, 20);
@@ -394,10 +400,16 @@ namespace GA_Action
                     //Console.WriteLine("SCORE:{0}", genom.Score);
 
                     scores.Add(genom.Score);
-                    if (maxScore < genom.Score)
+                    if (maxScores.Count < 10)
                     {
-                        maxScore = genom.Score;
-                        maxGenom = new Genom(genom.Actions);
+                        maxScores.Add(new KeyValuePair<int, bool>(genom.Score, genom.IsClear));
+                        maxScores.Sort((a, b) => a.Key.CompareTo(b.Key));
+                    }
+                    else if (maxScores[0].Key < genom.Score) 
+                    {
+                        maxScores.Add(new KeyValuePair<int, bool>(genom.Score, genom.IsClear));
+                        maxScores = maxScores.OrderByDescending(a => a.Key).Take(10).OrderBy(a => a.Key).ToList();
+
                     }
                 }
                 scoreAvgs.Add(scores.Average());
@@ -406,20 +418,24 @@ namespace GA_Action
             }
             using (StreamWriter sw = new StreamWriter(outFileName))
             {
+                maxScores.Reverse();
+                sw.WriteLine("{0} / {1} was goal", maxScores.OrderByDescending(a => a.Key).Take(10).Where(a => a.Value).Count(), 10);
                 foreach (var scoreAvg in scoreAvgs)
                 {
                     sw.WriteLine("{0}", scoreAvg);
                 }
-                sw.WriteLine("MAX SCORE, {0}", maxScore);
             }
         }
         static void Main(string[] args)
         {
             for (int i = 1; i <= 12; i++)
             {
+                if ( i == 4) { continue; }
+                i = 13;
                 string fieldName = string.Format("field{0}.txt", i);
                 Field field = new Field(fieldName);
-                GeneticAlgorithm(string.Format("result{0}.csv", i), field, 20, new Random(), 1000, 20);
+                GeneticAlgorithm(string.Format("result{0}.csv", i), field, 20, new Random(100000), 1000, 20);
+                break;
             }
         }
     }
